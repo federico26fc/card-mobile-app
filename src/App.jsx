@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
+const SPEECH_RATE_STORAGE_KEY = "card-mobile-app-speech-rate";
+const TEN_NO_PAUSE_STORAGE_KEY = "card-mobile-app-ten-no-pause";
 const IMAGES_DATABASE_NAME = "card-mobile-app";
 const IMAGES_STORE_NAME = "images";
 const NUMBERS = Array.from({ length: 100 }, (_, number) => number);
@@ -9,8 +11,16 @@ const getRandomNumber = () => Math.floor(Math.random() * 100);
 const formatNumber = (number) => String(number).padStart(2, "0");
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 const getSpokenNumber = (number) => formatNumber(number).split("").map((digit) => NUMBER_WORDS[Number(digit)]).join(", ");
+const getSpeechPause = (rate) => Math.max(25, Math.round(350 / rate));
 
 const getTenRandomNumbers = () => Array.from({ length: 10 }, getRandomNumber);
+
+const getStoredSpeechRate = () => {
+  const storedRate = Number(localStorage.getItem(SPEECH_RATE_STORAGE_KEY));
+  return storedRate >= 0.5 && storedRate <= 5 ? storedRate : 0.85;
+};
+
+const getStoredTenNoPause = () => localStorage.getItem(TEN_NO_PAUSE_STORAGE_KEY) === "true";
 
 const prepareImage = (file) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -89,6 +99,9 @@ function App() {
   const [tenNumbers, setTenNumbers] = useState([]);
   const [tenView, setTenView] = useState("numbers");
   const [tenAnnouncing, setTenAnnouncing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [speechRate, setSpeechRate] = useState(getStoredSpeechRate);
+  const [tenNoPause, setTenNoPause] = useState(getStoredTenNoPause);
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
   const speechSequenceRef = useRef(0);
@@ -182,6 +195,20 @@ function App() {
     window.speechSynthesis.cancel();
     setTenAnnouncing(true);
 
+    if (tenNoPause) {
+      const utterance = new SpeechSynthesisUtterance(numbers.map(getSpokenNumber).join(", "));
+      utterance.lang = "en-US";
+      utterance.rate = speechRate;
+      utterance.onend = () => {
+        if (speechSequenceRef.current === sequenceId) {
+          setTenAnnouncing(false);
+        }
+      };
+      utterance.onerror = utterance.onend;
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+
     const announceNext = (index) => {
       if (speechSequenceRef.current !== sequenceId) {
         return;
@@ -194,9 +221,9 @@ function App() {
 
       const utterance = new SpeechSynthesisUtterance(getSpokenNumber(numbers[index]));
       utterance.lang = "en-US";
-      utterance.rate = 0.85;
-      utterance.onend = () => announceNext(index + 1);
-      utterance.onerror = () => announceNext(index + 1);
+      utterance.rate = speechRate;
+      utterance.onend = () => setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
+      utterance.onerror = () => setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
       window.speechSynthesis.speak(utterance);
     };
 
@@ -238,8 +265,22 @@ function App() {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(getSpokenNumber(number));
     utterance.lang = "en-US";
-    utterance.rate = 0.85;
+    utterance.rate = speechRate;
     window.speechSynthesis.speak(utterance);
+  };
+
+  const onSpeechRateChange = (event) => {
+    const nextRate = Number(event.target.value);
+
+    setSpeechRate(nextRate);
+    localStorage.setItem(SPEECH_RATE_STORAGE_KEY, String(nextRate));
+  };
+
+  const onTenNoPauseChange = (event) => {
+    const noPause = event.target.checked;
+
+    setTenNoPause(noPause);
+    localStorage.setItem(TEN_NO_PAUSE_STORAGE_KEY, String(noPause));
   };
 
   useEffect(() => {
@@ -295,17 +336,56 @@ function App() {
       tabIndex={mode === "random" ? 0 : undefined}
       onKeyDown={mode === "random" ? (event) => event.key === "Enter" && onScreenTap() : undefined}
     >
-      <nav className="mode-controls" aria-label="Modalità applicazione" onClick={(event) => event.stopPropagation()}>
-        <button type="button" className={mode === "random" ? "active" : ""} onClick={openRandomMode} disabled={!imagesLoaded}>
-          Random
+      <div className="top-controls" onClick={(event) => event.stopPropagation()}>
+        <nav className="mode-controls" aria-label="Modalità applicazione">
+          <button type="button" className={mode === "random" ? "active" : ""} onClick={openRandomMode} disabled={!imagesLoaded}>
+            Random
+          </button>
+          <button type="button" className={mode === "ten" ? "active" : ""} onClick={openTenMode} disabled={!imagesLoaded}>
+            TEN
+          </button>
+          <button type="button" className={mode === "manage" ? "active" : ""} onClick={openManager} disabled={!imagesLoaded}>
+            Caricamenti immagini
+          </button>
+        </nav>
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => setShowSettings((visible) => !visible)}
+          aria-expanded={showSettings}
+          aria-controls="speech-settings"
+          aria-label="Impostazioni"
+          title="Impostazioni"
+        >
+          ⚙
         </button>
-        <button type="button" className={mode === "ten" ? "active" : ""} onClick={openTenMode} disabled={!imagesLoaded}>
-          TEN
-        </button>
-        <button type="button" className={mode === "manage" ? "active" : ""} onClick={openManager} disabled={!imagesLoaded}>
-          Caricamenti immagini
-        </button>
-      </nav>
+        {showSettings && (
+          <section id="speech-settings" className="settings-panel">
+            <label htmlFor="speech-rate">Velocità voce: {speechRate.toFixed(2)}x</label>
+            <input
+              id="speech-rate"
+              type="range"
+              min="0.5"
+              max="5"
+              step="0.05"
+              value={speechRate}
+              onChange={onSpeechRateChange}
+            />
+            <label className="settings-toggle" htmlFor="ten-no-pause">
+              <input
+                id="ten-no-pause"
+                type="checkbox"
+                checked={tenNoPause}
+                onChange={onTenNoPauseChange}
+              />
+              Nessuna pausa tra i numeri TEN
+            </label>
+            <button type="button" onClick={() => speakNumber(displayNumber)}>
+              Prova voce
+            </button>
+          </section>
+        )}
+      </div>
 
       {!imagesLoaded && <p className="loading">Caricamento archivio immagini...</p>}
 
