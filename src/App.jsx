@@ -7,6 +7,8 @@ const NUMBERS = Array.from({ length: 100 }, (_, number) => number);
 
 const getRandomNumber = () => Math.floor(Math.random() * 100);
 const formatNumber = (number) => String(number).padStart(2, "0");
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+const getSpokenNumber = (number) => formatNumber(number).split("").map((digit) => NUMBER_WORDS[Number(digit)]).join(", ");
 
 const prepareImage = (file) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -148,6 +150,19 @@ function App() {
     setMode("random");
   };
 
+  const speakNumber = (number) => {
+    if (!("speechSynthesis" in window)) {
+      setError("La sintesi vocale non è disponibile su questo dispositivo.");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(getSpokenNumber(number));
+    utterance.lang = "en-US";
+    utterance.rate = 0.85;
+    window.speechSynthesis.speak(utterance);
+  };
+
   const onScreenTap = () => {
     if (!selectedImage) {
       setError("Seleziona prima un'immagine.");
@@ -155,6 +170,7 @@ function App() {
     }
 
     setShowCard(true);
+    speakNumber(displayNumber);
     setError("");
   };
 
@@ -167,6 +183,7 @@ function App() {
 
     setNumberHistory((history) => [...history, nextNumber]);
     setShowCard(false);
+    speakNumber(nextNumber);
     setError("");
   };
 
@@ -175,8 +192,10 @@ function App() {
       return;
     }
 
+    const previousNumber = numberHistory[numberHistory.length - 2];
     setNumberHistory((history) => history.slice(0, -1));
     setShowCard(false);
+    speakNumber(previousNumber);
     setError("");
   };
 
