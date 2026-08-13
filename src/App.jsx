@@ -92,6 +92,7 @@ function App() {
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
   const speechSequenceRef = useRef(0);
+  const hasAnnouncedInitialRandomRef = useRef(false);
   const displayNumber = numberHistory[numberHistory.length - 1];
   const selectedImage = imagesByNumber[displayNumber] || "";
 
@@ -166,6 +167,7 @@ function App() {
     setShowCard(false);
     setError("");
     setMode("random");
+    speakNumber(displayNumber);
   };
 
   const announceTenNumbers = (numbers) => {
@@ -201,7 +203,7 @@ function App() {
     announceNext(0);
   };
 
-  const startTenRound = () => {
+  const startTenRound = (announceNumbers = false) => {
     const numbers = getTenRandomNumbers();
 
     stopSpeech();
@@ -209,6 +211,10 @@ function App() {
     setTenView("numbers");
     setTenAnnouncing(false);
     setError("");
+
+    if (announceNumbers) {
+      announceTenNumbers(numbers);
+    }
   };
 
   const repeatTenNumbers = () => {
@@ -220,7 +226,7 @@ function App() {
   const openTenMode = () => {
     setShowCard(false);
     setMode("ten");
-    startTenRound();
+    startTenRound(true);
   };
 
   const speakNumber = (number) => {
@@ -235,6 +241,15 @@ function App() {
     utterance.rate = 0.85;
     window.speechSynthesis.speak(utterance);
   };
+
+  useEffect(() => {
+    if (!imagesLoaded || hasAnnouncedInitialRandomRef.current) {
+      return;
+    }
+
+    hasAnnouncedInitialRandomRef.current = true;
+    speakNumber(displayNumber);
+  }, [imagesLoaded]);
 
   const onScreenTap = () => {
     if (!selectedImage) {
@@ -280,7 +295,7 @@ function App() {
       tabIndex={mode === "random" ? 0 : undefined}
       onKeyDown={mode === "random" ? (event) => event.key === "Enter" && onScreenTap() : undefined}
     >
-      <nav className="mode-controls" aria-label="Modalità applicazione">
+      <nav className="mode-controls" aria-label="Modalità applicazione" onClick={(event) => event.stopPropagation()}>
         <button type="button" className={mode === "random" ? "active" : ""} onClick={openRandomMode} disabled={!imagesLoaded}>
           Random
         </button>
@@ -380,6 +395,9 @@ function App() {
         <section className="panel" onClick={(event) => event.stopPropagation()}>
           <p className="label">Numero visibile</p>
           <p className="number">{formatNumber(displayNumber)}</p>
+          <button type="button" className="repeat-number-button" onClick={() => speakNumber(displayNumber)}>
+            Ripeti numero
+          </button>
           <p className="hint">Tocca lo schermo per mostrare l’immagine associata</p>
           {error && <p className="error">{error}</p>}
         </section>
