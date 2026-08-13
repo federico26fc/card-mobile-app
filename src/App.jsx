@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
 const IMAGES_DATABASE_NAME = "card-mobile-app";
@@ -9,6 +9,8 @@ const getRandomNumber = () => Math.floor(Math.random() * 100);
 const formatNumber = (number) => String(number).padStart(2, "0");
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 const getSpokenNumber = (number) => formatNumber(number).split("").map((digit) => NUMBER_WORDS[Number(digit)]).join(", ");
+
+const getTenRandomNumbers = () => Array.from({ length: 10 }, getRandomNumber);
 
 const prepareImage = (file) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -84,8 +86,12 @@ function App() {
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [mode, setMode] = useState("random");
+  const [tenNumbers, setTenNumbers] = useState([]);
+  const [tenView, setTenView] = useState("numbers");
+  const [tenAnnouncing, setTenAnnouncing] = useState(false);
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
+  const speechSequenceRef = useRef(0);
   const displayNumber = numberHistory[numberHistory.length - 1];
   const selectedImage = imagesByNumber[displayNumber] || "";
 
@@ -110,6 +116,11 @@ function App() {
     };
 
     initialiseImages();
+  }, []);
+
+  useEffect(() => () => {
+    speechSequenceRef.current += 1;
+    window.speechSynthesis?.cancel();
   }, []);
 
   const onChooseImage = async (number, event) => {
@@ -138,16 +149,78 @@ function App() {
     }
   };
 
+  const stopSpeech = () => {
+    speechSequenceRef.current += 1;
+    window.speechSynthesis?.cancel();
+  };
+
   const openManager = () => {
+    stopSpeech();
     setShowCard(false);
     setError("");
     setMode("manage");
   };
 
   const openRandomMode = () => {
+    stopSpeech();
     setShowCard(false);
     setError("");
     setMode("random");
+  };
+
+  const announceTenNumbers = (numbers) => {
+    if (!("speechSynthesis" in window)) {
+      setTenAnnouncing(false);
+      setError("La sintesi vocale non è disponibile su questo dispositivo.");
+      return;
+    }
+
+    const sequenceId = speechSequenceRef.current + 1;
+    speechSequenceRef.current = sequenceId;
+    window.speechSynthesis.cancel();
+    setTenAnnouncing(true);
+
+    const announceNext = (index) => {
+      if (speechSequenceRef.current !== sequenceId) {
+        return;
+      }
+
+      if (index === numbers.length) {
+        setTenAnnouncing(false);
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(getSpokenNumber(numbers[index]));
+      utterance.lang = "en-US";
+      utterance.rate = 0.85;
+      utterance.onend = () => announceNext(index + 1);
+      utterance.onerror = () => announceNext(index + 1);
+      window.speechSynthesis.speak(utterance);
+    };
+
+    announceNext(0);
+  };
+
+  const startTenRound = () => {
+    const numbers = getTenRandomNumbers();
+
+    stopSpeech();
+    setTenNumbers(numbers);
+    setTenView("numbers");
+    setTenAnnouncing(false);
+    setError("");
+  };
+
+  const repeatTenNumbers = () => {
+    if (tenNumbers.length > 0) {
+      announceTenNumbers(tenNumbers);
+    }
+  };
+
+  const openTenMode = () => {
+    setShowCard(false);
+    setMode("ten");
+    startTenRound();
   };
 
   const speakNumber = (number) => {
@@ -201,20 +274,23 @@ function App() {
 
   return (
     <main
-      className={`app ${mode === "manage" ? "manager-app" : ""}`}
+      className={`app ${mode === "manage" || mode === "ten" ? "workspace-app" : ""}`}
       onClick={mode === "random" ? onScreenTap : undefined}
       role={mode === "random" ? "button" : undefined}
       tabIndex={mode === "random" ? 0 : undefined}
       onKeyDown={mode === "random" ? (event) => event.key === "Enter" && onScreenTap() : undefined}
     >
-      <button
-        type="button"
-        className="manager-button"
-        onClick={mode === "manage" ? openRandomMode : openManager}
-        disabled={!imagesLoaded}
-      >
-        {mode === "manage" ? "Modalità random" : "Caricamenti immagini"}
-      </button>
+      <nav className="mode-controls" aria-label="Modalità applicazione">
+        <button type="button" className={mode === "random" ? "active" : ""} onClick={openRandomMode} disabled={!imagesLoaded}>
+          Random
+        </button>
+        <button type="button" className={mode === "ten" ? "active" : ""} onClick={openTenMode} disabled={!imagesLoaded}>
+          TEN
+        </button>
+        <button type="button" className={mode === "manage" ? "active" : ""} onClick={openManager} disabled={!imagesLoaded}>
+          Caricamenti immagini
+        </button>
+      </nav>
 
       {!imagesLoaded && <p className="loading">Caricamento archivio immagini...</p>}
 
@@ -248,6 +324,53 @@ function App() {
                 </label>
               </article>
             ))}
+          </div>
+          {error && <p className="error">{error}</p>}
+        </section>
+      )}
+
+      {imagesLoaded && mode === "ten" && (
+        <section className="ten" onClick={(event) => event.stopPropagation()}>
+          <div className="ten-heading">
+            <p className="label">Modalità TEN</p>
+            <h1>Dieci numeri casuali</h1>
+            <p className="hint">{tenAnnouncing ? "Annuncio vocale in corso..." : "Usa “Ripeti numeri” per ascoltare la sequenza."}</p>
+          </div>
+
+          {tenView === "numbers" ? (
+            <div className="ten-number-grid">
+              {tenNumbers.map((number, index) => <span key={`${number}-${index}`}>{formatNumber(number)}</span>)}
+            </div>
+          ) : (
+            <div className="ten-image-grid">
+              {tenNumbers.map((number, index) => (
+                <article className="ten-image" key={`${number}-${index}`}>
+                  <strong>{formatNumber(number)}</strong>
+                  {imagesByNumber[number] ? (
+                    <img src={imagesByNumber[number]} alt={`Immagine ${formatNumber(number)}`} />
+                  ) : (
+                    <span>Nessuna immagine associata</span>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="ten-actions">
+            <button type="button" className="ten-button secondary" onClick={startTenRound}>
+              Nuovi dieci numeri
+            </button>
+            <button type="button" className="ten-button secondary" onClick={repeatTenNumbers} disabled={tenAnnouncing}>
+              Ripeti numeri
+            </button>
+            <button
+              type="button"
+              className="ten-button"
+              onClick={() => setTenView((view) => view === "numbers" ? "images" : "numbers")}
+              disabled={tenAnnouncing}
+            >
+              {tenView === "numbers" ? "Scopri immagini" : "Mostra numeri"}
+            </button>
           </div>
           {error && <p className="error">{error}</p>}
         </section>

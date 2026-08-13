@@ -29,27 +29,34 @@ body {
   gap: 20px;
 }
 
-.manager-button {
+.mode-controls {
   position: fixed;
   top: 16px;
   left: 16px;
   z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+.mode-controls button {
   border: 0;
-  border-radius: 12px;
-  padding: 10px 14px;
-  color: #fff;
-  background: var(--ink);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.88);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(63, 39, 8, 0.12);
 }
 
-.manager-button:hover {
-  filter: brightness(1.15);
+.mode-controls button.active {
+  color: #fff;
+  background: var(--ink);
 }
 
-.manager-button:disabled {
+.mode-controls button:disabled {
   cursor: wait;
   opacity: 0.55;
 }
@@ -59,7 +66,7 @@ body {
   font-weight: 600;
 }
 
-.manager-app {
+.workspace-app {
   justify-content: flex-start;
   align-items: stretch;
   padding-top: 76px;
@@ -78,6 +85,104 @@ body {
 .manager-heading h1 {
   margin: 6px 0 0;
   font-size: clamp(1.4rem, 4vw, 2.1rem);
+}
+
+.ten {
+  width: min(720px, 100%);
+  margin: 0 auto;
+}
+
+.ten-heading {
+  text-align: center;
+}
+
+.ten-heading h1 {
+  margin: 6px 0 0;
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+}
+
+.ten-number-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 24px 0;
+}
+
+.ten-number-grid span {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 7px 16px rgba(63, 39, 8, 0.12);
+  font-size: clamp(1.3rem, 7vw, 2.25rem);
+  font-weight: 700;
+}
+
+.ten-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.ten-image {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 7px 16px rgba(63, 39, 8, 0.12);
+}
+
+.ten-image strong,
+.ten-image span {
+  display: block;
+  padding: 8px;
+  text-align: center;
+}
+
+.ten-image span {
+  min-height: 130px;
+  display: grid;
+  place-items: center;
+  color: rgba(31, 37, 51, 0.55);
+  background: #fff0dc;
+  font-size: 0.8rem;
+}
+
+.ten-image img {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  object-fit: cover;
+}
+
+.ten-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ten-button {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  color: #fff;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ten-button.secondary {
+  color: var(--ink);
+  background: #fff;
+}
+
+.ten-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .image-grid {
@@ -231,6 +336,15 @@ body {
 }
 
 @media (max-width: 420px) {
+  .mode-controls {
+    max-width: calc(100vw - 32px);
+  }
+
+  .mode-controls button {
+    padding: 8px;
+    font-size: 0.7rem;
+  }
+
   .number {
     font-size: 2.5rem;
   }
