@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
 const SPEECH_RATE_STORAGE_KEY = "card-mobile-app-speech-rate";
@@ -91,6 +92,27 @@ const saveImage = async (number, imageUrl) => {
   database.close();
 };
 
+const replaceImages = async (imagesByNumber) => {
+  const database = await openImagesDatabase();
+
+  await new Promise((resolve, reject) => {
+    const store = database.transaction(IMAGES_STORE_NAME, "readwrite").objectStore(IMAGES_STORE_NAME);
+    const clearRequest = store.clear();
+
+    clearRequest.onerror = () => reject(clearRequest.error);
+    clearRequest.onsuccess = () => {
+      Object.entries(imagesByNumber).forEach(([number, imageUrl]) => {
+        store.put({ number: Number(number), imageUrl });
+      });
+    };
+
+    store.transaction.oncomplete = () => resolve();
+    store.transaction.onerror = () => reject(store.transaction.error);
+  });
+
+  database.close();
+};
+
 function App() {
   const [imagesByNumber, setImagesByNumber] = useState({});
   const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -106,6 +128,7 @@ function App() {
   const [error, setError] = useState("");
   const speechSequenceRef = useRef(0);
   const hasAnnouncedInitialRandomRef = useRef(false);
+  const backupInputRef = useRef(null);
   const displayNumber = numberHistory[numberHistory.length - 1];
   const selectedImage = imagesByNumber[displayNumber] || "";
 
@@ -134,7 +157,7 @@ function App() {
 
   useEffect(() => () => {
     speechSequenceRef.current += 1;
-    window.speechSynthesis?.cancel();
+    TextToSpeech.stop().catch(() => {});
   }, []);
 
   const onChooseImage = async (number, event) => {
@@ -165,7 +188,7 @@ function App() {
 
   const stopSpeech = () => {
     speechSequenceRef.current += 1;
-    window.speechSynthesis?.cancel();
+    TextToSpeech.stop().catch(() => {});
   };
 
   const openManager = () => {
@@ -184,32 +207,28 @@ function App() {
   };
 
   const announceTenNumbers = (numbers) => {
-    if (!("speechSynthesis" in window)) {
-      setTenAnnouncing(false);
-      setError("La sintesi vocale non è disponibile su questo dispositivo.");
-      return;
-    }
-
     const sequenceId = speechSequenceRef.current + 1;
     speechSequenceRef.current = sequenceId;
-    window.speechSynthesis.cancel();
+    TextToSpeech.stop().catch(() => {});
     setTenAnnouncing(true);
 
     if (tenNoPause) {
-      const utterance = new SpeechSynthesisUtterance(numbers.map(getSpokenNumber).join(", "));
-      utterance.lang = "en-US";
-      utterance.rate = speechRate;
-      utterance.onend = () => {
+      TextToSpeech.speak({ text: numbers.map(getSpokenNumber).join(", "), lang: "en-US", rate: speechRate })
+        .then(() => {
         if (speechSequenceRef.current === sequenceId) {
           setTenAnnouncing(false);
         }
-      };
-      utterance.onerror = utterance.onend;
-      window.speechSynthesis.speak(utterance);
+        })
+        .catch(() => {
+          if (speechSequenceRef.current === sequenceId) {
+            setTenAnnouncing(false);
+            setError("La sintesi vocale non è disponibile su questo dispositivo.");
+          }
+        });
       return;
     }
 
-    const announceNext = (index) => {
+    const announceNext = async (index) => {
       if (speechSequenceRef.current !== sequenceId) {
         return;
       }
@@ -219,12 +238,19 @@ function App() {
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(getSpokenNumber(numbers[index]));
-      utterance.lang = "en-US";
-      utterance.rate = speechRate;
-      utterance.onend = () => setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
-      utterance.onerror = () => setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
-      window.speechSynthesis.speak(utterance);
+      try {
+        await TextToSpeech.speak({ text: getSpokenNumber(numbers[index]), lang: "en-US", rate: speechRate });
+      } catch {
+        if (speechSequenceRef.current === sequenceId) {
+          setTenAnnouncing(false);
+          setError("La sintesi vocale non è disponibile su questo dispositivo.");
+        }
+        return;
+      }
+
+      if (speechSequenceRef.current === sequenceId) {
+        setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
+      }
     };
 
     announceNext(0);
@@ -257,16 +283,9 @@ function App() {
   };
 
   const speakNumber = (number) => {
-    if (!("speechSynthesis" in window)) {
+    TextToSpeech.speak({ text: getSpokenNumber(number), lang: "en-US", rate: speechRate }).catch(() => {
       setError("La sintesi vocale non è disponibile su questo dispositivo.");
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(getSpokenNumber(number));
-    utterance.lang = "en-US";
-    utterance.rate = speechRate;
-    window.speechSynthesis.speak(utterance);
+    });
   };
 
   const onSpeechRateChange = (event) => {
@@ -281,6 +300,58 @@ function App() {
 
     setTenNoPause(noPause);
     localStorage.setItem(TEN_NO_PAUSE_STORAGE_KEY, String(noPause));
+  };
+
+  const exportImages = () => {
+    const backup = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      imagesByNumber,
+    };
+    const backupUrl = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: "application/json" }));
+    const downloadLink = document.createElement("a");
+
+    downloadLink.href = backupUrl;
+    downloadLink.download = "card-mobile-app-images-backup.json";
+    downloadLink.click();
+    URL.revokeObjectURL(backupUrl);
+  };
+
+  const importImages = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const backup = JSON.parse(await file.text());
+      const importedImages = backup?.imagesByNumber;
+
+      if (!importedImages || typeof importedImages !== "object" || Array.isArray(importedImages)) {
+        throw new Error("invalid-backup");
+      }
+
+      const validImages = Object.fromEntries(
+        Object.entries(importedImages).filter(([number, imageUrl]) => Number.isInteger(Number(number))
+          && Number(number) >= 0
+          && Number(number) <= 99
+          && typeof imageUrl === "string"
+          && imageUrl.startsWith("data:image/"))
+      );
+
+      if (Object.keys(validImages).length === 0 && Object.keys(importedImages).length > 0) {
+        throw new Error("invalid-backup");
+      }
+
+      await replaceImages(validImages);
+      setImagesByNumber(validImages);
+      setError("");
+    } catch {
+      setError("Il file di backup non è valido o non può essere importato.");
+    } finally {
+      event.target.value = "";
+    }
   };
 
   useEffect(() => {
@@ -380,6 +451,20 @@ function App() {
               />
               Nessuna pausa tra i numeri TEN
             </label>
+            <div className="backup-actions">
+              <button type="button" onClick={exportImages}>
+                Esporta immagini
+              </button>
+              <input
+                ref={backupInputRef}
+                id="images-backup"
+                className="hidden-input"
+                type="file"
+                accept="application/json,.json"
+                onChange={importImages}
+              />
+              <label htmlFor="images-backup">Importa immagini</label>
+            </div>
             <button type="button" onClick={() => speakNumber(displayNumber)}>
               Prova voce
             </button>

@@ -126,6 +126,23 @@ body {
   cursor: pointer;
 }
 
+.settings-panel .backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.settings-panel .backup-actions label {
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #fff;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
 .loading {
   margin: 0;
   font-weight: 600;
