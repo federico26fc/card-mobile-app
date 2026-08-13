@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
+const IMAGES_DATABASE_NAME = "card-mobile-app";
+const IMAGES_STORE_NAME = "images";
 const NUMBERS = Array.from({ length: 100 }, (_, number) => number);
 
 const getRandomNumber = () => Math.floor(Math.random() * 100);
@@ -13,14 +15,14 @@ const prepareImage = (file) => new Promise((resolve, reject) => {
   image.onload = () => {
     URL.revokeObjectURL(objectUrl);
 
-    const maxSize = 1600;
+    const maxSize = 1200;
     const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
     canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    const imageUrl = canvas.toDataURL("image/jpeg", 0.82);
+    const imageUrl = canvas.toDataURL("image/jpeg", 0.76);
     resolve(imageUrl);
   };
 
@@ -32,7 +34,7 @@ const prepareImage = (file) => new Promise((resolve, reject) => {
   image.src = objectUrl;
 });
 
-const getStoredImages = () => {
+const getLegacyStoredImages = () => {
   try {
     const storedImages = localStorage.getItem(IMAGES_STORAGE_KEY);
     return storedImages ? JSON.parse(storedImages) : {};
@@ -41,14 +43,72 @@ const getStoredImages = () => {
   }
 };
 
+const openImagesDatabase = () => new Promise((resolve, reject) => {
+  const request = indexedDB.open(IMAGES_DATABASE_NAME, 1);
+
+  request.onupgradeneeded = () => {
+    request.result.createObjectStore(IMAGES_STORE_NAME, { keyPath: "number" });
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+});
+
+const loadImages = async () => {
+  const database = await openImagesDatabase();
+  const images = await new Promise((resolve, reject) => {
+    const request = database.transaction(IMAGES_STORE_NAME, "readonly").objectStore(IMAGES_STORE_NAME).getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  database.close();
+  return Object.fromEntries(images.map(({ number, imageUrl }) => [number, imageUrl]));
+};
+
+const saveImage = async (number, imageUrl) => {
+  const database = await openImagesDatabase();
+
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(IMAGES_STORE_NAME, "readwrite").objectStore(IMAGES_STORE_NAME).put({ number, imageUrl });
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+
+  database.close();
+};
+
 function App() {
-  const [imagesByNumber, setImagesByNumber] = useState(getStoredImages);
+  const [imagesByNumber, setImagesByNumber] = useState({});
+  const [imagesLoaded, setImagesLoaded] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [mode, setMode] = useState("random");
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
   const displayNumber = numberHistory[numberHistory.length - 1];
   const selectedImage = imagesByNumber[displayNumber] || "";
+
+  useEffect(() => {
+    const initialiseImages = async () => {
+      try {
+        let images = await loadImages();
+
+        if (Object.keys(images).length === 0) {
+          const legacyImages = getLegacyStoredImages();
+          await Promise.all(Object.entries(legacyImages).map(([number, imageUrl]) => saveImage(Number(number), imageUrl)));
+          images = legacyImages;
+          localStorage.removeItem(IMAGES_STORAGE_KEY);
+        }
+
+        setImagesByNumber(images);
+      } catch {
+        setError("Non è stato possibile aprire l'archivio immagini.");
+      } finally {
+        setImagesLoaded(true);
+      }
+    };
+
+    initialiseImages();
+  }, []);
 
   const onChooseImage = async (number, event) => {
     const file = event.target.files?.[0];
@@ -61,7 +121,7 @@ function App() {
       const imageUrl = await prepareImage(file);
       const updatedImages = { ...imagesByNumber, [number]: imageUrl };
 
-      localStorage.setItem(IMAGES_STORAGE_KEY, JSON.stringify(updatedImages));
+      await saveImage(number, imageUrl);
       setImagesByNumber(updatedImages);
       setShowCard(false);
       setError("");
@@ -69,7 +129,7 @@ function App() {
       if (imageError.message === "unsupported-format") {
         setError("Questo formato non è supportato. Usa JPG, PNG o WEBP.");
       } else if (imageError.name === "QuotaExceededError") {
-        setError("Spazio immagini esaurito. Riduci le immagini salvate prima di aggiungerne altre.");
+        setError("Spazio immagini del dispositivo esaurito.");
       } else {
         setError("Non è stato possibile caricare l'immagine.");
       }
@@ -128,11 +188,18 @@ function App() {
       tabIndex={mode === "random" ? 0 : undefined}
       onKeyDown={mode === "random" ? (event) => event.key === "Enter" && onScreenTap() : undefined}
     >
-      <button type="button" className="manager-button" onClick={mode === "manage" ? openRandomMode : openManager}>
+      <button
+        type="button"
+        className="manager-button"
+        onClick={mode === "manage" ? openRandomMode : openManager}
+        disabled={!imagesLoaded}
+      >
         {mode === "manage" ? "Modalità random" : "Caricamenti immagini"}
       </button>
 
-      {mode === "manage" && (
+      {!imagesLoaded && <p className="loading">Caricamento archivio immagini...</p>}
+
+      {imagesLoaded && mode === "manage" && (
         <section className="manager" onClick={(event) => event.stopPropagation()}>
           <div className="manager-heading">
             <p className="label">Archivio immagini</p>
@@ -167,7 +234,7 @@ function App() {
         </section>
       )}
 
-      {mode === "random" && !showCard && (
+      {imagesLoaded && mode === "random" && !showCard && (
         <section className="panel" onClick={(event) => event.stopPropagation()}>
           <p className="label">Numero visibile</p>
           <p className="number">{formatNumber(displayNumber)}</p>
@@ -176,7 +243,7 @@ function App() {
         </section>
       )}
 
-      {mode === "random" && showCard && selectedImage && (
+      {imagesLoaded && mode === "random" && showCard && selectedImage && (
         <div className="card-layout" onClick={(event) => event.stopPropagation()}>
           <button
             type="button"

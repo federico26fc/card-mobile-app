@@ -49,6 +49,16 @@ body {
   filter: brightness(1.15);
 }
 
+.manager-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.loading {
+  margin: 0;
+  font-weight: 600;
+}
+
 .manager-app {
   justify-content: flex-start;
   align-items: stretch;
