@@ -121,6 +121,11 @@ function App() {
   const [tenNumbers, setTenNumbers] = useState([]);
   const [tenView, setTenView] = useState("numbers");
   const [tenAnnouncing, setTenAnnouncing] = useState(false);
+  const [tenNumbersHidden, setTenNumbersHidden] = useState(false);
+  const [tenRecallInput, setTenRecallInput] = useState("");
+  const [tenReverseInput, setTenReverseInput] = useState(false);
+  const [tenScore, setTenScore] = useState(null);
+  const [tenRecallResults, setTenRecallResults] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [speechRate, setSpeechRate] = useState(getStoredSpeechRate);
   const [tenNoPause, setTenNoPause] = useState(getStoredTenNoPause);
@@ -217,11 +222,13 @@ function App() {
         .then(() => {
         if (speechSequenceRef.current === sequenceId) {
           setTenAnnouncing(false);
+          setTenNumbersHidden(true);
         }
         })
         .catch(() => {
           if (speechSequenceRef.current === sequenceId) {
             setTenAnnouncing(false);
+            setTenNumbersHidden(true);
             setError("La sintesi vocale non è disponibile su questo dispositivo.");
           }
         });
@@ -235,6 +242,7 @@ function App() {
 
       if (index === numbers.length) {
         setTenAnnouncing(false);
+        setTenNumbersHidden(true);
         return;
       }
 
@@ -243,6 +251,7 @@ function App() {
       } catch {
         if (speechSequenceRef.current === sequenceId) {
           setTenAnnouncing(false);
+          setTenNumbersHidden(true);
           setError("La sintesi vocale non è disponibile su questo dispositivo.");
         }
         return;
@@ -263,6 +272,11 @@ function App() {
     setTenNumbers(numbers);
     setTenView("numbers");
     setTenAnnouncing(false);
+    setTenNumbersHidden(false);
+    setTenRecallInput("");
+    setTenReverseInput(false);
+    setTenScore(null);
+    setTenRecallResults([]);
     setError("");
 
     if (announceNumbers) {
@@ -274,6 +288,52 @@ function App() {
     if (tenNumbers.length > 0) {
       announceTenNumbers(tenNumbers);
     }
+  };
+
+  const onTenRecall = () => {
+    if (tenNumbers.length === 0) {
+      return;
+    }
+
+    const compactDigits = tenRecallInput.replace(/\s+/g, "").replace(/[^0-9]/g, "");
+
+    if (compactDigits.length !== 20) {
+      setTenRecallResults([]);
+      setError("Inserisci i 10 numeri senza spazi tra una coppia e l'altra: 12345678901234567890");
+      return;
+    }
+
+    const parsedNumbers = Array.from({ length: 10 }, (_, index) => {
+      const pair = compactDigits.slice(index * 2, index * 2 + 2);
+      const value = Number(pair);
+      return Number.isInteger(value) && value >= 0 && value <= 99 ? formatNumber(value) : null;
+    }).filter((value) => value !== null);
+
+    if (parsedNumbers.length !== 10) {
+      setTenRecallResults([]);
+      setError("Inserisci i 10 numeri senza spazi tra una coppia e l'altra: 12345678901234567890");
+      return;
+    }
+
+    const normalizedNumbers = tenReverseInput
+      ? parsedNumbers.map((value) => {
+        const digits = value.split("");
+        return digits.length === 2 ? digits.reverse().join("") : value;
+      }).reverse()
+      : parsedNumbers;
+
+    const expectedDigits = tenNumbers.flatMap((number) => formatNumber(number).split(""));
+    const actualDigits = normalizedNumbers.flatMap((value) => value.split(""));
+    const results = expectedDigits.map((expectedDigit, index) => ({
+      expectedDigit,
+      actualDigit: actualDigits[index] ?? "",
+      isCorrect: actualDigits[index] === expectedDigit,
+    }));
+
+    const correctCount = results.filter(({ isCorrect }) => isCorrect).length;
+    setTenScore({ correctCount, total: expectedDigits.length });
+    setTenRecallResults(results);
+    setError("");
   };
 
   const openTenMode = () => {
@@ -518,8 +578,12 @@ function App() {
           </div>
 
           {tenView === "numbers" ? (
-            <div className="ten-number-grid">
-              {tenNumbers.map((number, index) => <span key={`${number}-${index}`}>{formatNumber(number)}</span>)}
+            <div className={`ten-number-grid ${tenNumbersHidden ? "ten-number-grid-hidden" : ""}`}>
+              {tenNumbers.map((number, index) => (
+                <span key={`${number}-${index}`}>
+                  {tenNumbersHidden ? "?" : formatNumber(number)}
+                </span>
+              ))}
             </div>
           ) : (
             <div className="ten-image-grid">
@@ -551,7 +615,62 @@ function App() {
             >
               {tenView === "numbers" ? "Scopri immagini" : "Mostra numeri"}
             </button>
+            {tenNumbers.length > 0 && (
+              <button
+                type="button"
+                className="ten-button secondary"
+                onClick={() => setTenNumbersHidden((hidden) => !hidden)}
+                disabled={tenAnnouncing}
+              >
+                {tenNumbersHidden ? "Mostra numeri" : "Nascondi numeri"}
+              </button>
+            )}
           </div>
+
+          <div className="ten-recall">
+            <div className="ten-recall-header">
+              <label htmlFor="ten-recall-input">Numeri ricordati</label>
+              <label className="ten-recall-reverse" htmlFor="ten-reverse-input">
+                <input
+                  id="ten-reverse-input"
+                  type="checkbox"
+                  checked={tenReverseInput}
+                  onChange={(event) => setTenReverseInput(event.target.checked)}
+                />
+                <span>Contrario</span>
+              </label>
+            </div>
+            <input
+              id="ten-recall-input"
+              type="text"
+              value={tenRecallInput}
+              onChange={(event) => setTenRecallInput(event.target.value)}
+              placeholder="es. 12345678901234567890"
+              disabled={tenNumbers.length === 0}
+            />
+            <button type="button" className="ten-button" onClick={onTenRecall} disabled={tenNumbers.length === 0}>
+              Controlla
+            </button>
+            {tenScore && (
+              <>
+                <p className="ten-score" aria-live="polite">
+                  Hai fatto {tenScore.correctCount}/{tenScore.total} numeri giusti.
+                </p>
+                <div className="ten-recall-results" aria-live="polite">
+                  {tenRecallResults.map(({ expectedDigit, actualDigit, isCorrect }, index) => (
+                    <span
+                      key={`${expectedDigit}-${index}`}
+                      className={isCorrect ? "correct-digit" : "wrong-digit"}
+                      title={`Previsto: ${expectedDigit} • Inserito: ${actualDigit || "-"}`}
+                    >
+                      {actualDigit || expectedDigit}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {error && <p className="error">{error}</p>}
         </section>
       )}
