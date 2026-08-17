@@ -369,8 +369,8 @@ function App() {
       return;
     }
 
+    stopSpeech();
     setShowCard(true);
-    speakNumber(displayNumber);
     setError("");
   };
 
