@@ -97,8 +97,21 @@ body {
   font-size: 0.85rem;
 }
 
-.settings-panel input {
+.settings-panel input,
+.settings-panel select {
   width: 100%;
+  font: inherit;
+}
+
+.settings-panel select {
+  border: 1px solid rgba(31, 37, 51, 0.14);
+  border-radius: 8px;
+  padding: 8px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.settings-panel input {
   accent-color: var(--accent);
 }
 
@@ -356,6 +369,11 @@ body {
 .ten-recall-results .wrong-digit {
   background: rgba(239, 68, 68, 0.14);
   color: #991b1b;
+}
+
+.ten-recall-results .unknown-digit {
+  background: rgba(255, 122, 0, 0.14);
+  color: #9a4b00;
 }
 
 .image-grid {

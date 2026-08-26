@@ -4,6 +4,7 @@ import { TextToSpeech } from "@capacitor-community/text-to-speech";
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
 const SPEECH_RATE_STORAGE_KEY = "card-mobile-app-speech-rate";
 const TEN_NO_PAUSE_STORAGE_KEY = "card-mobile-app-ten-no-pause";
+const TEN_LENGTH_MODE_STORAGE_KEY = "card-mobile-app-ten-length-mode";
 const IMAGES_DATABASE_NAME = "card-mobile-app";
 const IMAGES_STORE_NAME = "images";
 const NUMBERS = Array.from({ length: 100 }, (_, number) => number);
@@ -14,7 +15,7 @@ const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "sev
 const getSpokenNumber = (number) => formatNumber(number).split("").map((digit) => NUMBER_WORDS[Number(digit)]).join(", ");
 const getSpeechPause = (rate) => Math.max(25, Math.round(350 / rate));
 
-const getTenRandomNumbers = () => Array.from({ length: 10 }, getRandomNumber);
+const getTenRandomNumbers = (length) => Array.from({ length }, getRandomNumber);
 
 const getStoredSpeechRate = () => {
   const storedRate = Number(localStorage.getItem(SPEECH_RATE_STORAGE_KEY));
@@ -22,6 +23,7 @@ const getStoredSpeechRate = () => {
 };
 
 const getStoredTenNoPause = () => localStorage.getItem(TEN_NO_PAUSE_STORAGE_KEY) === "true";
+const getStoredTenLengthMode = () => localStorage.getItem(TEN_LENGTH_MODE_STORAGE_KEY) === "random" ? "random" : "fixed";
 
 const prepareImage = (file) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -129,6 +131,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [speechRate, setSpeechRate] = useState(getStoredSpeechRate);
   const [tenNoPause, setTenNoPause] = useState(getStoredTenNoPause);
+  const [tenLengthMode, setTenLengthMode] = useState(getStoredTenLengthMode);
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
   const speechSequenceRef = useRef(0);
@@ -266,8 +269,9 @@ function App() {
   };
 
   const startTenRound = (announceNumbers = false) => {
-    const numbers = getTenRandomNumbers();
-
+    const length = tenLengthMode === "random" ? 5 + Math.floor(Math.random() * 6) : 10;
+    const numbers = getTenRandomNumbers(length);
+    
     stopSpeech();
     setTenNumbers(numbers);
     setTenView("numbers");
@@ -295,43 +299,42 @@ function App() {
       return;
     }
 
-    const compactDigits = tenRecallInput.replace(/\s+/g, "").replace(/[^0-9]/g, "");
+    const input = tenRecallInput.trim();
+    const compactInput = input.replace(/\s+/g, "");
+    const inputTokens = compactInput.length % 2 === 0
+      ? compactInput.match(/.{2}/g) || []
+      : [];
+    const isValidInput = inputTokens.length >= 1
+      && inputTokens.length <= tenNumbers.length
+      && inputTokens.every((token) => /^[0-9*]{2}$/.test(token));
 
-    if (compactDigits.length !== 20) {
+    if (!isValidInput) {
       setTenRecallResults([]);
-      setError("Inserisci i 10 numeri senza spazi tra una coppia e l'altra: 12345678901234567890");
-      return;
-    }
-
-    const parsedNumbers = Array.from({ length: 10 }, (_, index) => {
-      const pair = compactDigits.slice(index * 2, index * 2 + 2);
-      const value = Number(pair);
-      return Number.isInteger(value) && value >= 0 && value <= 99 ? formatNumber(value) : null;
-    }).filter((value) => value !== null);
-
-    if (parsedNumbers.length !== 10) {
-      setTenRecallResults([]);
-      setError("Inserisci i 10 numeri senza spazi tra una coppia e l'altra: 12345678901234567890");
+      setError(`Inserisci da 1 a ${tenNumbers.length} coppie di due caratteri; usa **, *3 o 3* per le cifre dimenticate. Es.: 12 ** *3 44`);
       return;
     }
 
     const normalizedNumbers = tenReverseInput
-      ? parsedNumbers.map((value) => {
+      ? inputTokens.map((value) => {
         const digits = value.split("");
-        return digits.length === 2 ? digits.reverse().join("") : value;
+        return digits.reverse().join("");
       }).reverse()
-      : parsedNumbers;
+      : inputTokens;
 
-    const expectedDigits = tenNumbers.flatMap((number) => formatNumber(number).split(""));
+    const expectedDigits = tenNumbers
+      .slice(0, normalizedNumbers.length)
+      .flatMap((number) => formatNumber(number).split(""));
     const actualDigits = normalizedNumbers.flatMap((value) => value.split(""));
     const results = expectedDigits.map((expectedDigit, index) => ({
       expectedDigit,
       actualDigit: actualDigits[index] ?? "",
       isCorrect: actualDigits[index] === expectedDigit,
+      isUnknown: actualDigits[index] === "*",
     }));
 
     const correctCount = results.filter(({ isCorrect }) => isCorrect).length;
-    setTenScore({ correctCount, total: expectedDigits.length });
+    const knownDigitCount = results.filter(({ isUnknown }) => !isUnknown).length;
+    setTenScore({ correctCount, total: knownDigitCount });
     setTenRecallResults(results);
     setError("");
   };
@@ -360,6 +363,13 @@ function App() {
 
     setTenNoPause(noPause);
     localStorage.setItem(TEN_NO_PAUSE_STORAGE_KEY, String(noPause));
+  };
+
+  const onTenLengthModeChange = (event) => {
+    const nextMode = event.target.value;
+
+    setTenLengthMode(nextMode);
+    localStorage.setItem(TEN_LENGTH_MODE_STORAGE_KEY, nextMode);
   };
 
   const exportImages = () => {
@@ -511,6 +521,11 @@ function App() {
               />
               Nessuna pausa tra i numeri TEN
             </label>
+            <label htmlFor="ten-length-mode">Quantità numeri TEN</label>
+            <select id="ten-length-mode" value={tenLengthMode} onChange={onTenLengthModeChange}>
+              <option value="fixed">Sempre 10 coppie (20 cifre)</option>
+              <option value="random">Casuale da 10 a 20 numeri</option>
+            </select>
             <div className="backup-actions">
               <button type="button" onClick={exportImages}>
                 Esporta immagini
@@ -574,7 +589,7 @@ function App() {
           <div className="ten-heading">
             <p className="label">Modalità TEN</p>
             <h1>Dieci numeri casuali</h1>
-            <p className="hint">{tenAnnouncing ? "Annuncio vocale in corso..." : "Usa “Ripeti numeri” per ascoltare la sequenza."}</p>
+            <p className="hint">{tenAnnouncing ? "Annuncio vocale in corso..." : `Sequenza di ${tenNumbers.length} numeri. Usa “Ripeti numeri” per ascoltarla.`}</p>
           </div>
 
           {tenView === "numbers" ? (
@@ -629,7 +644,7 @@ function App() {
 
           <div className="ten-recall">
             <div className="ten-recall-header">
-              <label htmlFor="ten-recall-input">Numeri ricordati</label>
+              <label htmlFor="ten-recall-input">Numeri ricordati (da 1 a {tenNumbers.length})</label>
               <label className="ten-recall-reverse" htmlFor="ten-reverse-input">
                 <input
                   id="ten-reverse-input"
@@ -645,7 +660,7 @@ function App() {
               type="text"
               value={tenRecallInput}
               onChange={(event) => setTenRecallInput(event.target.value)}
-              placeholder="es. 12345678901234567890"
+              placeholder="es. 12 ** *3 44"
               disabled={tenNumbers.length === 0}
             />
             <button type="button" className="ten-button" onClick={onTenRecall} disabled={tenNumbers.length === 0}>
@@ -657,10 +672,10 @@ function App() {
                   Hai fatto {tenScore.correctCount}/{tenScore.total} numeri giusti.
                 </p>
                 <div className="ten-recall-results" aria-live="polite">
-                  {tenRecallResults.map(({ expectedDigit, actualDigit, isCorrect }, index) => (
+                  {tenRecallResults.map(({ expectedDigit, actualDigit, isCorrect, isUnknown }, index) => (
                     <span
                       key={`${expectedDigit}-${index}`}
-                      className={isCorrect ? "correct-digit" : "wrong-digit"}
+                      className={isUnknown ? "unknown-digit" : isCorrect ? "correct-digit" : "wrong-digit"}
                       title={`Previsto: ${expectedDigit} • Inserito: ${actualDigit || "-"}`}
                     >
                       {actualDigit || expectedDigit}
