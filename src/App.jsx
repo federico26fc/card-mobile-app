@@ -470,15 +470,8 @@ function App() {
     setError("");
   };
 
-  const onPreviousNumber = () => {
-    if (numberHistory.length === 1) {
-      return;
-    }
-
-    const previousNumber = numberHistory[numberHistory.length - 2];
-    setNumberHistory((history) => history.slice(0, -1));
+  const onReturnToNumber = () => {
     setShowCard(false);
-    speakNumber(previousNumber);
     setError("");
   };
 
@@ -729,11 +722,10 @@ function App() {
         <div className="card-layout" onClick={(event) => event.stopPropagation()}>
           <button
             type="button"
-            className="next-button"
-            onClick={onPreviousNumber}
-            disabled={numberHistory.length === 1}
-            aria-label="Torna al numero precedente"
-            title="Torna al numero precedente"
+            className="next-button back-button"
+            onClick={onReturnToNumber}
+            aria-label="Torna al numero associato all'immagine"
+            title="Torna al numero associato all'immagine"
           >
             &lt;
           </button>
