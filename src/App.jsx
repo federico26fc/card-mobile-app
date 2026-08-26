@@ -704,7 +704,7 @@ function App() {
           </article>
           <button
             type="button"
-            className="next-button"
+            className="next-button forward-button"
             onClick={onNextNumber}
             aria-label="Mostra un altro numero"
             title="Mostra un altro numero"
