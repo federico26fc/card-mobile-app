@@ -4,6 +4,7 @@ import { TextToSpeech } from "@capacitor-community/text-to-speech";
 const IMAGES_STORAGE_KEY = "card-mobile-app-images";
 const SPEECH_RATE_STORAGE_KEY = "card-mobile-app-speech-rate";
 const TEN_NO_PAUSE_STORAGE_KEY = "card-mobile-app-ten-no-pause";
+const TEN_SPEECH_DELAY_STORAGE_KEY = "card-mobile-app-ten-speech-delay";
 const TEN_LENGTH_MODE_STORAGE_KEY = "card-mobile-app-ten-length-mode";
 const IMAGES_DATABASE_NAME = "card-mobile-app";
 const IMAGES_STORE_NAME = "images";
@@ -13,7 +14,7 @@ const getRandomNumber = () => Math.floor(Math.random() * 100);
 const formatNumber = (number) => String(number).padStart(2, "0");
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 const getSpokenNumber = (number) => formatNumber(number).split("").map((digit) => NUMBER_WORDS[Number(digit)]).join(", ");
-const getSpeechPause = (rate) => Math.max(25, Math.round(350 / rate));
+const getSpeechPause = (rate, additionalDelay) => Math.max(25, Math.round(350 / rate) + additionalDelay);
 
 const getTenRandomNumbers = (length) => Array.from({ length }, getRandomNumber);
 
@@ -23,6 +24,10 @@ const getStoredSpeechRate = () => {
 };
 
 const getStoredTenNoPause = () => localStorage.getItem(TEN_NO_PAUSE_STORAGE_KEY) === "true";
+const getStoredTenSpeechDelay = () => {
+  const storedDelay = Number(localStorage.getItem(TEN_SPEECH_DELAY_STORAGE_KEY));
+  return storedDelay >= 0 && storedDelay <= 5000 ? storedDelay : 0;
+};
 const getStoredTenLengthMode = () => localStorage.getItem(TEN_LENGTH_MODE_STORAGE_KEY) === "random" ? "random" : "fixed";
 
 const prepareImage = (file) => new Promise((resolve, reject) => {
@@ -131,6 +136,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [speechRate, setSpeechRate] = useState(getStoredSpeechRate);
   const [tenNoPause, setTenNoPause] = useState(getStoredTenNoPause);
+  const [tenSpeechDelay, setTenSpeechDelay] = useState(getStoredTenSpeechDelay);
   const [tenLengthMode, setTenLengthMode] = useState(getStoredTenLengthMode);
   const [numberHistory, setNumberHistory] = useState([getRandomNumber()]);
   const [error, setError] = useState("");
@@ -261,7 +267,7 @@ function App() {
       }
 
       if (speechSequenceRef.current === sequenceId) {
-        setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate));
+        setTimeout(() => announceNext(index + 1), getSpeechPause(speechRate, tenSpeechDelay));
       }
     };
 
@@ -363,6 +369,13 @@ function App() {
 
     setTenNoPause(noPause);
     localStorage.setItem(TEN_NO_PAUSE_STORAGE_KEY, String(noPause));
+  };
+
+  const onTenSpeechDelayChange = (event) => {
+    const nextDelay = Number(event.target.value);
+
+    setTenSpeechDelay(nextDelay);
+    localStorage.setItem(TEN_SPEECH_DELAY_STORAGE_KEY, String(nextDelay));
   };
 
   const onTenLengthModeChange = (event) => {
@@ -521,6 +534,16 @@ function App() {
               />
               Nessuna pausa tra i numeri TEN
             </label>
+            <label htmlFor="ten-speech-delay">Pausa aggiuntiva: {(tenSpeechDelay / 1000).toFixed(1)} s</label>
+            <input
+              id="ten-speech-delay"
+              type="range"
+              min="0"
+              max="5000"
+              step="100"
+              value={tenSpeechDelay}
+              onChange={onTenSpeechDelayChange}
+            />
             <label htmlFor="ten-length-mode">Quantità numeri TEN</label>
             <select id="ten-length-mode" value={tenLengthMode} onChange={onTenLengthModeChange}>
               <option value="fixed">Sempre 10 coppie (20 cifre)</option>
